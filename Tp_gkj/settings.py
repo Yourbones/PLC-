@@ -27,6 +27,13 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+MACHINE_CODE = 'HZA3'  #不明白此处设置是什么含义，机器语言?   PS：#TODO:设备号要更改
+
+SEND_STATE_URL = 'http://192.168.8.102:12345/notify/ter/state' #TODO:URL为测试服地址
+
+STOP_WASHING_TYPE = 2 # 1、STOP后可以有复位及重新开始等后续操作 2、STOP 即结束订单，不提供复位重新启动（只保留停止按键）
+
+READ_HARDWARE_INFO_TIMES = 3 #读取硬件状态信息三次
 
 # Application definition
 
@@ -37,10 +44,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework',
+    'rest_framework', #django提供的rest框架
     'rest_framework.authtoken',#不明白为什么添加到应用列表，而不是随时调用
     'rest_framework_swagger',#使得API接口可视化
-    'wash_machine'
+    'apps.wash_machine'
 
 ]
 
