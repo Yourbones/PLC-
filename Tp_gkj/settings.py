@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import
+from __future__ import unicode_literals
+from multiprocessing import Process, Queue
+#multiprocessing是Python的标准模块
+#Process模块用来创建子进程，是核心模块
+#Queue模块用来控制进程安全
+
+
 """
 Django settings for Tp_gkj project.
 
@@ -47,18 +56,20 @@ INSTALLED_APPS = [
     'rest_framework', #django提供的rest框架
     'rest_framework.authtoken',#不明白为什么添加到应用列表，而不是随时调用
     'rest_framework_swagger',#使得API接口可视化
-    'apps.wash_machine'
-
+    'apps.wash_machine',
+    'common'
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.auth.middleware.SessionAuthenticationMiddleware'
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.security.SecurityMiddleware',
+    'common.middleware.SignMiddleware' #验签中间件
 ]
 
 ROOT_URLCONF = 'Tp_gkj.urls'
@@ -82,17 +93,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'Tp_gkj.wsgi.application'
 
-
-# Database
-# https://docs.djangoproject.com/en/1.11/ref/settings/#databases
-
-DATABASES = {
+#设置缓存
+CACHES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'BACKEND': 'django.core.cache.backends.locmen.LocMemCache',              #选择缓存模式为本地内存缓存
+        'LOCATION': 'unique-snowflake',                                          #注明本地缓存的存储位置，只有一个内存缓存时可以忽略
+        'TIMEOUT': None,                                                         #表示超时时间，单位时秒。超过指定时间缓存就会整体刷新清空掉。
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/1.11/ref/settings/#auth-password-validators
@@ -116,18 +124,74 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/1.11/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'zh-HANS'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Shanghai'
 
 USE_I18N = True
 
 USE_L10N = True
 
-USE_TZ = True
+USE_TZ = False
 
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
-STATIC_URL = '/static/'
+#静态资源的配置
+STATIC_URL = '/manage/static/'                                           #？此处manage不知在哪，static也没有对应文件夹
+STATIC_ROOT = os.path.join(BASE_DIR, "static/").replace('\\', '/')       #？replace没懂替代含义；BASE_DIR指的就是工程project的目录
+
+
+STATIC_FINDERS = (
+    'django.contrib.staticfiles.finders.FileSystemFinder',               #这里具体配置没懂
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+)
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, "media/").replace('\\', '/')
+
+
+QAUTH2_PROVIDER = {
+    #this is the list of available scopes
+    'SCOPES': {'read': 'Read scope', 'write': 'Write scope', 'groups': 'Access to your groups'}     #表示申请的权限范围
+}
+
+# Database
+# https://docs.djangoproject.com/en/1.11/ref/settings/#databases
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'OPTIONS': {
+            'read_default_file': BASE_DIR + '/TP_GKJ/my_dev.cnf',
+        },
+        'ATOMIC_REQUESTS': True,                                       #这里不懂
+    }
+}
+
+REST_FRAMEWORK = {
+    # Use Django's standard `django.contrib.auth` permissions,
+    # or allow read-only access for unauthenticated users.
+    'DEFAULT _PERMISSION_CLASSES':(
+        #’rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly'
+        'rest_framework.permissions.IsAUthenticatedOrReadOnly',
+        #'rest_framework.permissions.DjangoObjectPeimissions',
+    ),
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.AcceptHeaderVersioning',
+    'DEFAULT_VERSION': '1.0',
+    'ALLOWED_VERSIONS': None,
+    'DEFAULT_FILTER_BACKENDS': ('rest_framework.filters.DjangoFilterBackend',
+                                'rest_framework.filters.OrderingFilter',
+                                'rest_framework.filters.SearchFilter',),
+    'PAGE_SIZE': 10,
+    'DEFAULT_AUTHENTICATION_CLASSES':(
+        'rest_framework.authentication.TokenAuthentication',
+        # 'oauth2_provider.ext.rest_framework.OAuth2Authentication',
+        # 'rest_framework.authentication.SessionAuthentication',
+    ),
+    'NON_FIELD_ERRORS_KEY': 'errors',
+    #datetime数据输出格式
+    'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
+
+}
