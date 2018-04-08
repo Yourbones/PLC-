@@ -70,4 +70,7 @@
     </LinkMapSettings>
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 2.7 virtualenv at C:\Users\dell\PycharmProjects\Tp_gkj\venv" project-jdk-type="Python SDK" />
+  <component name="PythonCompatibilityInspectionAdvertiser">
+    <option name="version" value="2" />
+  </component>
 </project>

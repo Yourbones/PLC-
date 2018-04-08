@@ -139,9 +139,9 @@ USE_TZ = False
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
 #静态资源的配置
-STATIC_URL = '/manage/static/'                                           #？此处manage不知在哪，static也没有对应文件夹
+STATIC_URL = '/static/'                                           #？此处manage不知在哪，static也没有对应文件夹
 STATIC_ROOT = os.path.join(BASE_DIR, "static/").replace('\\', '/')       #？replace没懂替代含义；BASE_DIR指的就是工程project的目录
-
+                                                                         #如果设置为非空时，结尾必须是反斜线
 
 STATIC_FINDERS = (
     'django.contrib.staticfiles.finders.FileSystemFinder',               #这里具体配置没懂
@@ -164,9 +164,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'OPTIONS': {
-            'read_default_file': BASE_DIR + '/TP_GKJ/my_dev.cnf',
+            'read_default_file': BASE_DIR + '/Tp_gkj/my_dev.cnf',
         },
-        'ATOMIC_REQUESTS': True,                                       #这里不懂
+        'ATOMIC_REQUESTS': True,                                       #这里不懂,先放着
     }
 }
 
@@ -194,4 +194,115 @@ REST_FRAMEWORK = {
     #datetime数据输出格式
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
 
+    #   请求频率设置
+    'DEFAULT_THROTTLE_CLASSES':(
+        'rest_framework.throttling.ScopedRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+
+        #'helper.throttling.ChargeRateThrottle',
+    ),
+    'DEFAULT-THROTTLE-RATES':{
+        'anon': '300/minute',
+        'user': '600/minute',
+        'charge': '20/minute',
+        'feedback': '10/minute',
+        'group_check': '6/minute',
+    }
+}
+
+
+LOGGING_PREFIX = 'prod'                  #关于日志的东西，但是不懂意思
+
+#日志配置
+LOGGING = {
+    'version': 1,                        #日志版本
+    'disable_existing_loggers': True,    #disable原有日志相关配置
+    'formatters': {                      #日志格式
+        'standard': {                    #标准格式
+            'format': '%(asctime)s [%(threadName)s:%(thread)d] [%(name)s:%(lineno)d] [%(levelname)s]- %(message)s'
+        },
+    },
+    'filters': {                         #日志过滤器
+    },
+    'handlers': {                        #日志处理器
+        'default': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            #日志输出文件
+            'filename': os.path.join(BASE_DIR + '/logs/',
+                                     LOGGING_PREFIX + '_washing.log'),
+            #'maxBytes': 1024 * 1024 *1,   #文件大小
+            'backupCount': 100,            #备份份数
+            'formatter': 'standard',       #使用哪种formatters日志格式
+        },
+        'error': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR + '/logs/',
+                                     LOGGING_PREFIX + '_error.log'),
+            #'maxBytes': 1024 * 1024 *1,
+            'backupCount': 100,
+            'formatter': 'standard',
+        },
+        'console': {                       #控制器handler，DEBUG级别以上的日志都要standard格式输出到控制台
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'formatter': 'standard'
+        },
+        'request_handler': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR + '/logs/',
+                                     LOGGING_PREFIX + '_request.log'),
+            #'maxBytes': 1024 * 1024 *1,
+            'backupCount': 100,
+            'formatter': 'standard',
+        },
+        'scripts_handler': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR + '/logs/',
+                                     LOGGING_PREFIX + '_script.log'),
+            #'maxBytes': 1024 * 1024 * 1,
+            'backupCount': 100,
+            'formatter': 'standard',
+        },
+        'task_handler': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR + '/logs/',
+                                     LOGGING_PREFIX + '_task.log'),
+            #'maxBytes': 1024 * 1024 * 1,
+            'backupCount': 100,
+            'formatter': 'standard',
+        },
+    },
+    'loggers': {                                     #日志记录器
+        'django': {
+            'handlers': ['scripts_handler', 'console'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
+        'django.request': {
+            'handlers': ['request_handler', 'console'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
+        'scripts': {
+            'handlers': ['scripts_handler', 'console'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
+        'apps': {
+            'handlers': ['task_handler', 'console'],
+            'level': 'DEBUG',      #正式环境修改为INFO
+            'propagate': False,
+        },
+        'task': {
+            'handlers': ['task_handler', 'console'],
+            'level': 'DEBUG',     #正式环境修改为INFO
+            'propagate':False,
+        },
+    }
 }
