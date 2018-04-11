@@ -114,7 +114,7 @@ def parse_washing_machine(wash_machine, order_id):
     procedure = wash_machine.procedure
     output = wash_machine.output
     device_bin = [0, 0, 0, 0, 0, 0, 0, 0]         # [5]:PLC通信失败  [6]: Modbus通信失败   [7]: 洗车机故障
-    state = state_dict[procedure][0]              # 元祖是可以通过下标读取出来的
+    state = state_dict[procedure][0]              # 元组是可以通过下标读取出来的
     valid = 0                                     # 不可洗车
     need_wait = 0                                 # 热保护及补水，目前无法检测， 暂时置为0
 
@@ -153,7 +153,7 @@ def parse_end_machine(wash_machine, end_procedure, order_id, output):
     end_procedure_dict = {3:'正常结束', 5:'超时未重启结束',
                           6:'机械故障结束', 7:'PLC通讯故障结束', 11:'Modbus通讯故障结束'}
     done_type_dict = {3: (0, '正常结束'), 5: (2, '超时未重启结束'),
-                      6: (1, '故障结束'), 7: (1, '故障结束'),11: (1, '故障结束'), 10: (3, '故障结束')}
+                      6: (1, '故障结束'), 7: (1, '故障结束'),11: (1, '故障结束'), 10: (3, '暂停结束')}
     err_code_bin = [0, 0, 0, 0, 0, 0, 0, 0]
     device_bin = [0, 0, 0, 0, 0, 0, 0, 0]
 
@@ -213,30 +213,129 @@ def send_state_data(machine_state):
     for i in range(3):          #向服务器发送三次状态
         try:
             response = requests.request('POST', SEND_STATE_URL, data=machine_state_json, headers=headers)
-            if int(str(response.status_code)[0]) == 2:
-                r = response.json()
-                if int(r['Code']) == 200:
-                    if int(state) == WASH_END:
-                        if int(done_type) == 0:
-                            logger.info('洗车正常完成, 第{}次发送订单状态成功, 订单:{}, state:{}, data:{}'.format(i+1, order_id, state, machine_state_json))
-                        elif int(done_type) == 1:
-                            for i in range(1,4):
-                                if int(err_code) & 1:
+            #此处是Response的实例，具现化一个HTTP请求。定义了method、url、data、headers，具体参照requests文档
+            if int(str(response.status_code)[0]) == 2:     # 判断请求返回的状态码是否是2XX(请求被正常处理)
+                r = response.json()                        # 获取响应中的json编码内容
+                if int(r['Code']) == 200:                  # 判断json中的Code内容是否是200(返回信息)
+                    if int(state) == WASH_END:             # 判断洗车机是否清洗结束
+                        if int(done_type) == 0:            # 判断是否是正常结束，参照上面的done_type_dict
+                            logger.info(
+                                '洗车正常完成, 第{}次发送订单状态成功, 订单:{}, state:{}, data:{}'.format(
+                                    i+1, order_id, state, machine_state_json))
+                        elif int(done_type) == 1:          # 判断是否是故障结束
+                            for i in range(1,4):           # 判断故障结束的类型(1:机械故障, 2:Modbus故障, 3:PLC故障)
+                                if int(err_code) & 1:      #  位运算符比较
                                     err_str += err_code_dict[i]
-                                int(err_code) >> 1
-                            logger.info('洗车故障解除, 第{}次发送订单状态成功, 订单:{}, 错误:{}, state:{}, data:{}'.format(i+1, order_id, err_str, state,machine_state_json))
-                        elif int(done_type) == 2:
-                            pass
-                        elif int(done_type) == 3:
-                            pass
+                                int(err_code) >> 1         # 将左边err_code的各二进位全部右移一位
+                            logger.info(
+                                '洗车故障解除, 第{}次发送订单状态成功, 订单:{}, 错误:{}, state:{}, data:{}'.format(
+                                    i + 1, order_id, err_str, state,machine_state_json))
+                        elif int(done_type) == 2:          # 判断是否是 超时未重启结束
+                            logger.info(
+                                '洗车超时未重启结束, 第{}次发送订单状态成功, 订单:{}, state：{}, data:{}'.format(
+                                    i + 1, order_id, state, machine_state_json))
+                        elif int(done_type) == 3:          # 判断是否是 暂停结束
+                            logger.info(
+                                '洗车因暂停结束, 第{}次发送订单状态成功, 订单:{}, state:{}, data:{}'.format(
+                                    i + 1, order_id, state, machine_state_json))
+                        OrderRecord.objects.filter(order_id=order_id).update(is_send=1)
                     elif int(state) == 8:
-                        pass
+                        logger.info(
+                            '洗车机复位结束, 第{}次发送订单状态成功, 订单:{}, state:{}, data:{}'.format(
+                                i + 1, order_id, state, machine_state_json))
                     else:
-                        pass
+                        logger_task.info(
+                            '持续发送机器状态/订单状态成功, 第{}次发送订单状态成功, 订单:{}, state:{},data:{}'.format(
+                                i + 1, order_id, state, machine_state_json))
                     break
                 else:
-                    pass
-            else:
-                pass
+                    if int(state) == WASH_END:
+                        logger.info(
+                            'Response Code:{}, 洗车结束(包含异常结束), 第{}次发送订单状态失败, 请检查接口参数与格式, 订单:{}, state:{}, data:{}'.format(
+                                int(r['Code']), i + 1, order_id, state, machine_state_json))
+                    elif int(state) == 8:
+                        logger.info(
+                            'Response Code:{}, 洗车机复位结束, 第{}次发送订单状态失败, 订单:{}, state:{},data:{}'.format(
+                                int(r['Code']),i + 1, order_id,state, machine_state_json))
+                    else:
+                        logger_task.error(
+                            'Response Code:{}, 持续发送机器状态/订单状态第{}次失败, 请检查接口参数与格式, 订单:{}, state:{}, data:{}'.format(
+                               int(r['Code']), i + 1, order_id, state, machine_state_json))
+            else:            # 请求未被正常处理
+                logger_task.error(
+                    '持续发送机器状态/订单状态失败第{}次失败, 请检查接口参数与格式, 订单:{}, state:{}, data: {}'.format(
+                        i + 1, order_id, state, machine_state_json))
         except Exception:
-            pass
+            if int(state) == WASH_END:
+                logger.info(
+                    '洗车正常完成, 第{}次发送订单状态失败, 后台服务器错误, 订单:{}, state:{}, data:{}'.format(
+                        i +1, order_id, state, machine_state_json))
+            elif int(state) == 8:
+                logger.info(
+                    '洗车机复位结束, 第{}次发送订单状态失败, 后台服务器错误, 订单:{}, state:{}, data:{}'.format(
+                        i + 1, order_id, state, machine_state_json))
+            else:
+                logger_task.error(
+                    '持续发生机器状态/订单状态第{}次失败, 后台服务器错误, 订单:{}, state:{}, data:{}'.format(
+                        i + 1, order_id, state, machine_state_json))
+
+
+#发送忙碌状态定时任务(两秒一次)     代码没搞懂
+def send_busy_state(wash_system):
+    cond1 = wash_system.cond1
+    allow_send = wash_system.allow_send
+    if cond1.acquire():
+        cond1.wait()     #线程等待信号启动
+        cond1.release()
+        wash_system.readoutputbuffer()
+        machine_state = read_machine_state(wash_system)
+        state = machine_state['state']
+        if allow_send == True:
+            if int(state) in server_machine_running_state_list:
+                print('持续发送洗车系统忙碌状态')
+                machine_state = read_machine_state(wash_system)
+                machine_state['code'] = MACHINE_CODE
+                send_control = send_state_data(machine_state)    # 发送忙碌状态
+                # TODO：接收是否继续发送的命令
+    t = threading.Timer(5, send_busy_state, args=[wash_system, ])  # 定时间隔
+    t.setDaemon(True)
+    t.start()
+    # TODO: 完成态额外发送
+
+
+#发送空闲状态定时任务(十分钟一次)
+def send_free_state(wash_system):
+    cond1 = wash_system.cond1
+    allow_send = wash_system,allow_send
+    if cond1.acquire():
+        cond1.wait()   #线程等待信号启动
+        cond1.release()
+        wash_system.readoutputbuffer()
+        machine_state = read_machine_state(wash_system)
+        state = machine_state['state']
+        if allow_send == True:
+            if int(state)  in server_machine_free_state_list:
+                print('持续发送洗车系统空闲zhun=angtai')
+                machine_state = read_machine_state(wash_system)
+                machine_state['code'] = MACHINE_CODE
+                send_control = send_state_data(machine_state)     # 发送空闲状态
+                # TODO：接收是否继续发送的命令
+    t = threading.Timer(600, send_free_state, args=[wash_system, ])  # 定时间隔
+    t.setDaemon(True)
+    t.start()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
