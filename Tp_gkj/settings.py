@@ -175,8 +175,8 @@ REST_FRAMEWORK = {
     # or allow read-only access for unauthenticated users.
     'DEFAULT _PERMISSION_CLASSES':(
         #’rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly'
-        'rest_framework.permissions.IsAUthenticatedOrReadOnly',
-        #'rest_framework.permissions.DjangoObjectPeimissions',
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',               # 非登录用户只读
+        #'rest_framework.permissions.DjangoObjectPermissions',
     ),
     'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.AcceptHeaderVersioning',
     'DEFAULT_VERSION': '1.0',
