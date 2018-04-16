@@ -20,3 +20,4 @@ class WashMachineResetViewSet(APIView):
         pass
 
 
+
