@@ -18,10 +18,14 @@ from Tp_gkj.settings import MACHINE_CODE
 
 # 复位洗车机
 class WashMachineResetViewSet(APIView):
+    """
+    复位洗车机接口
+    """
     permission_classes = (IsTpServerUser,)
 
     def post(self, request, *args, **kwargs):
         pass
+
     
 # 下载日志文件
 class DownloadLogsViewSet(APIView):
@@ -51,7 +55,7 @@ class DownloadLogsViewSet(APIView):
                 else:
                     break
         BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        file_name = os.path.join(BASE_DIR, + '\\logs')
+        file_name = os.path.join(BASE_DIR, + 'logs/').replace('\\', '/')
         output_file = file_name + '.zip'
         make_zip(file_name, output_file)
         fn = open(output_file, 'rb')

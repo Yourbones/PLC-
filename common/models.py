@@ -32,8 +32,9 @@ class DeleteDateTimeModel(models.Model):
     class Meta:
         abstract = True
 
-    def update_delete(self):                        #对删除的状态进行判断
-        #更新为已删除
+    # 对删除状态进行判断
+    def update_delete(self):
+
         if self.deleted_at:
             #已删除
             re = 2
@@ -67,11 +68,11 @@ class UpdateDeleteDateTimeModel(UpdateDateTimeModel, DeleteDateTimeModel):
         abstract = True
 
 
-class DefaultManager(models.Manager):   #自定义默认管理器，并修改返回查询集  第一个声明的管理器就是默认管理器
-    use_for_related_fields = True       #设置为True后Django会始终使用这个管理器，不会自动创建管理器
+class DefaultManager(models.Manager):   # 自定义默认管理器，并修改返回查询集  第一个声明的管理器就是默认管理器
+    use_for_related_fields = True       # 设置为True后Django会始终使用这个管理器，不会自动创建管理器
 
     def get_queryset(self):
-        queryset = super(DefaultManager, self).get_queryset().filter(is_delete=False)    #此处是super()继承。 返回未删除的对象
+        queryset = super(DefaultManager, self).get_queryset().filter(is_delete=False)    # 此处是super()继承。 返回未删除的对象
         return queryset
 
 
@@ -81,7 +82,7 @@ class DeleteFieldModel(models.Model):
     objects = DefaultManager()
     audit_log = AuditLog()
 
-    def soft_delete(self):                        #方法命名不清晰
+    def soft_delete(self):                        # 方法命名不清晰
         self.is_delete = True
         self.updated_at = datetime.now()
         self.save(update_fields=['is_delete', 'update_at'], force_update=True)
