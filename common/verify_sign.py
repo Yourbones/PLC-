@@ -32,7 +32,7 @@ def verify_sign(pubkey, signature, data):
 验签流程：解码数字签名里面的老digest，将其与本地数据直接生成的新鲜digest进行比较，若两者一致，则是原本数据，未被篡改
 """
 
-def verify2(pk, sg, m):
+def verify2(pk, sg, m):                        #？这段代码的含义不懂，对于公钥的修改？
     from M2Crypto import BIO, RSA, EVP
     bio = BIO.MemoryBuffer(pk)
     rsa = RSA.load_pub_key_bio(bio)
@@ -51,9 +51,9 @@ def verifyTP(sg,msg):
 
 #对数据签名
 def sign_msg(message, pri_key, pub_key = None):
-    import rsa                                                                #导入rsa加密模块
-    signature = rsa.sign(message, pri_key, 'SHA256')                          #对消息进行签名
-    if not pub_key is not None and rsa.verify(message, signature, pub_key):   #对公钥进行非空判断和签名是否匹配消息判断
+    import rsa                                                                # 导入rsa加密模块
+    signature = rsa.sign(message, pri_key, 'SHA256')                          # 对消息进行签名
+    if not pub_key is not None and rsa.verify(message, signature, pub_key):   # 对公钥进行非空判断和签名是否匹配消息判断
         raise AssertionError('not verified')
     return signature
 

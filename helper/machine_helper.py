@@ -2,9 +2,12 @@
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import logging,time
+import logging
+import time
 
-from Tp_gkj.settings import READ_HARDWARE_INFO_TIMES   # 读取硬件状态信息三次
+from Tp_gkj.settings import PLC_KWARGS, PLC_TYPE
+from common.global_tag import delta_washing_action_flag_dict, delta_machine_malfunction_flag_dict, START, STOP, RESET, \
+    INIT_PROCEDURE, siemens_machine_malfunction_flag_dict, siemens_washing_action_flag_dict
 from helper.port_helper import Port
 from helper.modbus_helper import calcCRC
 from tasks.main_loop_washing import INIT_PROCEDURE
