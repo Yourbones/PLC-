@@ -110,7 +110,7 @@ class DeltaWashMachineBase(MachineBase):
         return plc_output
 
 
-class SiemensWashMchineBase(MachineBase):
+class SiemensWashMachineBase(MachineBase):
     """
     通过串口控制洗车机及读取洗车机的状态(西门子PLC)
     """
@@ -123,7 +123,7 @@ class SiemensWashMchineBase(MachineBase):
         data = [0x08, 0x10, 0x00, 0x00, 0x00, 0x02, 0x04, 0x88, 0x66, relay&0xFF, relay_tail]
         crc_result = crc_check(data)
         data.append((crc_result & 0xff00) >> 8)
-        data.qppend(crc_result & 0x00ff)
+        data.append(crc_result & 0x00ff)
         receive_data = cls.send_data_with_catch_exceptions(ser, data)
         return receive_data
 
@@ -171,6 +171,23 @@ class DeltaWashMachine(DeltaWashMachineBase):
         解析洗车机故障状态
         """
         self.malfunction_state = self.malfunction_state_info(self.ser)
+        if self.malfunction_state != [0]:
+            copy_malfunction_state = self.malfunction_state[:]
+            machine_malfunction_str = '洗车机出现故障'
+            for i in range(8):
+                if copy_malfunction_state[5] & 0x01 == 0x01:
+                    machine_malfunction_str += str(delta_machine_malfunction_flag_dict[i])
+                copy_malfunction_state[5] = copy_malfunction_state[5] >> 1
+            for i in range(8):
+                if copy_malfunction_state[4] & 0x01 == 0x01:
+                    machine_malfunction_str += str(delta_machine_malfunction_flag_dict[i])
+                copy_malfunction_state[4] = copy_malfunction_state[5] >> 1
+            for i in range(8):
+                if copy_malfunction_state[3] & 0x01 == 0x01:
+                    machine_malfunction_str += str(delta_machine_malfunction_flag_dict[i])
+                copy_malfunction_state[3] = copy_malfunction_state[3] >> 1
+            logger.info(machine_malfunction_str)
+
 
 
 

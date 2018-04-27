@@ -165,7 +165,7 @@ class ModbusModule(object):
         time.sleep(0.5)
 
     @dec_control_door_fun
-    def open_rear_door(self):
+    def close_rear_door(self):
         """
         关闭后门
         """
