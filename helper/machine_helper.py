@@ -7,185 +7,170 @@ import time
 
 from Tp_gkj.settings import PLC_KWARGS, PLC_TYPE
 from common.global_tag import delta_washing_action_flag_dict, delta_machine_malfunction_flag_dict, START, STOP, RESET, \
-    INIT_PROCEDURE, siemens_machine_malfunction_flag_dict, siemens_washing_action_flag_dict
+    INIT_PROCEDURE, siemens_machine_malfunction_flag_dict, siemens_washing_action_flag_dict, delta_siemens_wash_running_flag
 from helper.port_helper import Port
-from helper.modbus_helper import calcCRC
-from tasks.main_loop_washing import INIT_PROCEDURE
+from common.crc_check import crc_check
 
 logger = logging.getLogger('apps')
 logger_task = logging.getLogger('task')
 
-wash_fault = {
-    0:'风机升降热保护', 1:'备用', 2:'备用', 3:'备用', 4:'备用', 5:'备用', 6:'备用', 7:'备用',
-    8:'横刷转热保护', 9:'小车行走热保护', 10:'横刷I过大', 11:'横刷I过小', 12:'左立刷保护',
-    13:'右立刷保护', 14:'大立刷前后偏', 15:'横刷前后偏',16:'右立刷行走热保护', 17:'横风机热保护',
-    18:'侧风机热保护', 19:'立刷转热保护', 20:'小刷转热保护', 21:'左立刷行走热保护', 22:'水泵热保护',
-    23:'横刷升级热保护'
-}
 
-wash_action = {
-    0: '备用', 1: '左立刷右移', 2: '右立刷左移', 3: '左立刷左移', 4: '右立刷右移', 5: '小刷伸出', 6: '横刷下降', 7: '横刷上升',
-    8: '横风机', 9: '水泵启动', 10: '大立刷反转', 11: '大立刷正转', 12: '频率1', 13: '频率2', 14: '小车后退', 15: '小车前进',
-    16: '风机上升', 17: '风机下降', 18: '水管', 19: '水蜡或泡沫', 20: '横刷转', 21: '小刷转', 22: '左风机', 23: '右风机'
-}
+class MachineBase(object):
 
+    def machine_info(self, ser, data_type):
+        """
+        读洗车机各种状态
+        """
+        t1 = time.time()    # 获得当前时间戳(timestamp)
+        receive_data = self.send_data_with_catch_exceptions(ser, data_type)   # 第一次读取
+        # 第一次读取失败后，进行多次循环读取
+        while receive_data == [0]:
+            time.sleep(0.2) # 避免过快读取  time.sleep()函数推迟调用线程的执行
+            receive_data = self.send_data_with_catch_exceptions(ser, data_type)
+            t2 = time.time()
+            if receive_data != [0]:
+                break
+            out_time = PLC_KWARGS.get(PLC_TYPE, 'DELTA').get(data_type, 'MACHINE').get('read_timeout', 1)  # settings中设置的读取时间
+            if t2 - t1 > out_time:       # 如果首尾读取时间超出限制，跳出循环，停止读取
+                break
+        return receive_data
 
-class WashMachineBase(object):
-    """通过串口控制洗车机及读取洗车机的状态"""
-
-    # 读洗车机状态
-    @staticmethod                    # 为何用静态方法
-    def read_machine_state(ser):
-        data = [0x01, 0x02, 0x08, 0x5a, 0x00, 0x08, 0x5b, 0xbf]
+    @staticmethod
+    def send_data_with_catch_exceptions(ser, data_type):
+        """
+        发送数据并捕获异常
+        """
+        data = PLC_KWARGS.get(PLC_TYPE).get(data_type).get('send_data')
+        receive_data_count = PLC_KWARGS.get(PLC_TYPE).get(data_type).get('receive_data_count')
+        sleep_time = PLC_KWARGS.get(PLC_TYPE, 'DELTA').get('RECEIVE_DATA_SLEEP_TIME', 0.05)
         try:
-            Port.senddata(ser,data)
-            time.sleep(0.05)
-            rec_data = Port.receivedata(ser)
+            Port.send_data(ser, data)
+            time.sleep(sleep_time)
+            receive_data = Port.receive_data(ser)
         except Exception as e:
-            logger_task.error('串口写入错误, error: {}'.format(e))
+            logger_task.error('串口写入错误(plc), error: {}'.format(e))
             return [0x00]
-        if (calcCRC(rec_data) == 0):               # calCRC为输入一个列表，返回两个校验码
-            return rec_data
+        if (crc_check(receive_data) == 0) and len(receive_data) == int(receive_data_count):
+            return receive_data
         else:
             return [0x00]
 
+    def machine_state_info(self, ser):
+        """
+        洗车机状态
+        """
+        self.machine_state = self.machine_info(ser, 'MACHINE')
 
-    # 读当前洗车机动作
-    @staticmethod
-    def read_wash_state(ser):
-        data = [0x01, 0x02, 0x08, 0xa0, 0x00, 0x18, 0x7a, 0x42]
-        try:
-            Port.senddata(ser, data)
-            time.sleep(0.05)
-            rec_data = Port.receivedata(ser)
-        except Exception as e:
-            logger_task.error('串口写入错误，error：{}'.format(e))
-            return [0x00]
+    def machine_action_info(self, ser):
+        """
+        当前洗车机动作
+        """
+        self.action_state = self.machine_info(ser, 'ACTION')
 
-        if(calcCRC(rec_data)==0):
-            return rec_data
-        else:
-            return [0]
-
-
-    # 读热保护状态
-    @staticmethod
-    def read_thermal_protection(ser):
-        data = [0x01, 0x02, 0x08, 0x78, 0x00, 0x18, 0xFA, 0x79]
-        Port.senddata(ser, data)
-        time.sleep(0.05)
-        rec_data = Port.receivedata(ser)
-        if(calcCRC(rec_data)==0):
-            return rec_data
-        else:
-            return [0]
+    def malfunction_state_info(self, ser):
+        """
+        读洗车机故障状态
+        """
+        self.malfunction_state = self.machine_state(ser, 'MALFUNCTION')
 
 
-    # 写入PLC线圈
-    @staticmethod
-    def write_plc_coil(relay, para, ser):
+class DeltaWashMachineBase(MachineBase):
+    """
+    通过串口控制洗车机及读取洗车机的状态(台达PLC)
+    """
+    @classmethod
+    def write_plc_coil(cls, relay, para, ser):
+        """
+        写入 PLC 线圈
+        """
         data = [0x01, 0x05, 0x09, relay]
         if para == True:
             data.append(0xff)
         else:
             data.append(0x00)
         data.append((0x00))
-        crcresult = calcCRC(data)
-        data.append((crcresult & 0xff00) >> 8)
-        data.append(crcresult&0x00ff)
-        Port.senddata(ser, data)
-        time.sleep(0.05)
-        rec_data = Port.receivedata(ser)
+        crc_result = crc_check(data)
+        data.append((crc_result & 0xff00) >> 8)
+        data.append(crc_result & 0x00ff)
+        receive_data = cls.send_data_with_catch_exceptions(ser, data)
+        return receive_data
 
-        if(calcCRC(rec_data)==0):
-            return rec_data
-        else:
-            return [0]
-
-
-    # 控制洗车机 开始，停止，复位
-    @staticmethod
-    def write_machine(relay, ser):
-        output = [0]
-        if relay == 0:        # 开始
-            output = WashMachineBase.write_plc_coil(0x2d, True, ser)
-        elif relay == 1:      # 停止
-            output = WashMachineBase.write_plc_coil(0x2c, True, ser)
-        elif relay == 2:      # 复位
-            output = WashMachineBase.write_plc_coil(0x2e, True, ser)
-        return output
+    @classmethod
+    def control_machine(cls, action, ser):
+        """
+        控制洗车机 开始， 停止， 复位
+        """
+        plc_output = [0]
+        if action == START:
+            plc_output = cls.write_plc_coil(0x2d, True, ser)
+        elif action == STOP:
+            plc_output = cls.write_plc_coil(0x2c, True, ser)
+        elif action == RESET:
+            plc_output = cls.write_plc_coil(0x2e, True, ser)
+        return plc_output
 
 
-class WashMachine(object):
+class SiemensWashMchineBase(MachineBase):
+    """
+    通过串口控制洗车机及读取洗车机的状态(西门子PLC)
+    """
 
-    # 初始化参数
-    def __init__(self, ser, modbus_module, mp3_player):
+    @classmethod
+    def write_plc_coil(cls, relay, relay_tail, ser):
+        """
+        写入PLC线圈
+        """
+        data = [0x08, 0x10, 0x00, 0x00, 0x00, 0x02, 0x04, 0x88, 0x66, relay&0xFF, relay_tail]
+        crc_result = crc_check(data)
+        data.append((crc_result & 0xff00) >> 8)
+        data.qppend(crc_result & 0x00ff)
+        receive_data = cls.send_data_with_catch_exceptions(ser, data)
+        return receive_data
+
+    @classmethod
+    def control_machine(cls, action, ser):
+        """
+        控制洗车机 开始，停止，复位
+        """
+        plc_output = [0]
+        if action == START:
+            plc_output = cls.write_plc_coil(0x02, 0x00, ser)  # 111 [08 10 00 00 00 02 04 88 66 02 00 17 EC]
+        elif action == STOP:
+            plc_output = cls.write_plc_coil(0x01, 0xAA, ser) # 110  [08 10 00 00 00 02 04 88 66 01 AA 97 63]
+        elif action == RESET:
+            plc_output = cls.write_plc_coil(0x03, 0xAA, ser) # 112  [08 10 00 00 00 02 04 88 66 03 AA 96 03]
+        return plc_output
+
+
+class DeltaWashMachine(DeltaWashMachineBase):
+    """
+    台达PLC相关
+    """
+    def __init__(self, ser):
+        """
+        初始化参数
+        """
         self.ser = ser
-        self.modbus_module = modbus_module  # modbus 实例
-        self.mp3_player = mp3_player
+        self.machine_state = [1, 2, 1, 0, 161, 136]             # 洗车机状态
+        self.malfunction_state = [1, 2, 3, 0, 0, 0, 120, 78]    # 洗车机故障状态
+        self.action_state = [1, 2, 3, 0, 0, 0, 120, 78]         # 洗车机动作状态
+        self.machine_connection_status = False                  # 通信状态
+        self.front_limit_inductor_tag = 0                       # 前限传感器所在位置
 
-        self.IPCstate = [3, 2, 2, 0, 0, 192, 120]   # modbus 模块
-        self.machinestate = [1, 2, 1, 0, 161, 136]  # 洗车机状态
-        self.washstate = [1, 2, 3, 0, 0, 0, 120, 78] # 当前洗车机动作
-        self.output = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]   # 输出给server的数据
-        self.thermalstate = [1, 2, 3, 0, 0, 0, 120, 78]            # 热保护状态
+    def read_machine_state(self):
+        """
+        读洗车机状态
+        """
+        self.machine_state = self.machine_state_info(self.ser)
+        if self.machine_state != [0]:
+            self.machine_connection_status = True
+            self.front_limit_inductor_tag = self.machine_state[3]
 
-        self.startKey = 0x01 # 开始键
-        self.stopKey = 0x02  # 停止键
-        self.resetKey = 0x04 # 复位键
-
-        self.procedure = 0 # 洗车进度状态
-
-        self.mp3_3clock = False     # ??啥意思
-        self.mp4_4clock = False
-        self.mp3_qjclock = False    # 语音标志
-        self.mp3_htclock = False    # ???
-        self.mp3_tcclock = False
-        self.mp3_ALLyclock = False
-
-        self.drivingInduction = 0x08  # 驶入的传感器的位置
-        self.qcqx = 0x08              # 汽车前限
-        self.tailOfcar = 0x20         # 汽车后限
-        self.frontOfcar = 0x10        # 车头
-
-        self.driveinflag = False       # 有车进入且没有播放语音的标志
-        self.driveawayflag = False     # 前车是否开走的标志
-        self.intercomfailflag = 0      # 通信状态
-
-        self.start_flag = False        # 是否付款的标志
-        self.machine_is_running = False  # 付款后已启动洗车机的标志
-        self.suspended_time = 0          # 洗车过程中暂停时刻
-
-        self.close_door_time = 0         # 洗车房门关闭时间
-        self.close_door_tag = False      # 洗车房门是否关闭
-        self.car_leave = True            # 洗完车已离开
-        self.play_restart_voice_count = 2    # 播放重新启动位置不正确语音计数
-        self.is_stopped = False              # 是否按下物理停止键或者server停止过
-        self.server_stop = False             # 服务器停止信号标志
-        self.server_reset = False            # 服务器复位信号标志
-        self.server_restart = False          # 服务器重新开始信号标志
-
-        self.reseting = False                # 空闲时，验证是否复位完成
-
-
-
-    #读MODBUS状态
-    def readIPCport(self, cond1):
-        pass
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    def parse_machine_malfunction_state(self):
+        """
+        解析洗车机故障状态
+        """
+        self.malfunction_state = self.malfunction_state_info(self.ser)
 
 
 
