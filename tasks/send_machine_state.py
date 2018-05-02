@@ -2,108 +2,68 @@
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import requests, json, time, logging, threading
-from datetime import datetime
-
-from Tp_gkj.settings import MACHINE_CODE, SEND_STATE_URL
+import requests, json, logging, threading
+from Tp_gkj.settings import MACHINE_CODE, SEND_STATE_URL  # 设备号，服务器地址
 from apps.wash_machine.models import OrderRecord
+# 发送到服务端的洗车机状态标记(state)
+from common.global_tag import WASH_MACHINE_FAULT, CAR_FAULT, NO_CAR_NO_FAULT, MACHINE_CAN_START, DOOR_FALLING, \
+    MACHINE_WASHING, STOP_OR_RESET_WASHING, RESETING, RESET_END, WASH_END, server_machine_running_state_list, \
+    server_machine_free_state_list
+# 洗车流程进度标记
+from common.global_tag import MACHINE_FAULT_WASH_END_PROCEDURE, PLC_CONNECTION_ERROR_WASH_END_PROCEDURE, \
+    MODBUS_CONNECTION_ERROR_WASH_END_PROCEDURE, RESET_END_PROCEDURE, washing_procedure_list, DOOR_FALLING_PROCEDURE, \
+    MACHINE_WASHING_PROCEDURE, STOP_PROCEDURE, RESETING_PROCEDURE, NORMAL_WASH_END_PROCEDURE, \
+    STOP_OR_RESET_TIMEOUT_PROCEDURE,\
+    STOP_WASH_END_PROCEDURE, wash_fault_procedure_list
+# 汽车位置状态标记
+from common.global_tag import CAR_STATE_CAR_TOO_LONG, CAR_STATE_CAR_FAULT, CAR_STATE_WITHOUT_CAR
+# 洗车结束状态标记
+from common.global_tag import DONE_TYPE_NORMAL,DONE_TYPE_FAULT, DONE_TYPE_RESET_TIMEOUT, DONE_TYPE_STOP_BUTTON
 
 logger = logging.getLogger('apps')
 logger_task = logging.getLogger('task')
 
-#server 通信状态
-WASH_MACHINE_FAULT = 1       # 故障(包括机器故障及各种通讯故障)
-CAR_FAULT = 2                # 车的状态不对(包括位置与车太长)
-
-DOOR_FALLING = 3             # 卷闸门下降中，即将开始洗车
-MACHINE_WASHING = 4          # 正在洗车
-WASH_END = 5                 # 洗车结束状态
-STOP_OR_RESET_WASHING = 6    # 暂停中
-RESETING = 7                 # 复位中
-RESET_END = 8                # 复位结束
-
-MACHINE_CAN_START = 9        # READY
-NO_CAR_NO_FAULT = 10         # 空闲
-
-server_machine_running_state_list = [DOOR_FALLING, MACHINE_WASHING, WASH_END, STOP_OR_RESET_WASHING]
-server_machine_free_state_list = [WASH_MACHINE_FAULT, CAR_FAULT, MACHINE_CAN_START, NO_CAR_NO_FAULT]
-
-# server state 与 wash_machine.proceduce 对应关系
-# server_state_contrast_machine_proceduce = ( [(3, DOOR_FALLING, '卷闸门下降中'),(1, DOOR_FALLING_PROCEDURE, '卷闸门下降中')],
-#                                             [(4, MACHINE_WASHING, '正在洗車'), (2, MACHINE_WASHING_PROCEDURE, '正在洗車')],
-#
-#                                             [(5, WASH_END, '洗车结束状态'), (3, NORMAL_WASH_END_PROCEDURE, '洗车正常结束状态')],
-#                                             [(5, WASH_END, '洗车结束状态'), (5, STOP_OR_RESET_TIMEOUT_PROCEDURE, '暂停超时结束')],
-#                                             [(5, WASH_END, '洗车结束状态'), (6, MACHINE_FAULT_WASH_END_PROCEDURE, '机械故障结束')],
-#                                             [(5, WASH_END, '洗车结束状态'), (7, PLC_CONNECTION_ERROR_WASH_END_PROCEDURE, '通信故障结束')],
-#                                             [(5, WASH_END, '洗车结束状态'), (11, MODBUS_CONNECTION_ERROR_WASH_END_PROCEDURE, '通信故障结束')],
-
-#                                             [(6, STOP_OR_RESET_WASHING, '暂停中'), (4, STOP_PROCEDURE, '暂停中')],
-#                                             [(7, RESETING, '复位中'), (8, RESETING_PROCEDURE, '复位中')],
-#                                             [(8, RESET_END, '复位结束'), (9, RESET_END_PROCEDURE, '复位结束')] )
-
-
-#读取洗车机状态
 def read_machine_state(wash_system):
-    wash_machine = wash_system.wash_machine
-    order_id = wash_system.order_id
-    procedure = wash_machine.procedure
-    start_flag = wash_machine.start_flag
+    """
+    读取洗车机状态数据
+    """
+    procedure = wash_system.procedure
+    start_flag = wash_system.start_flag
 
-    if start_flag == 1 and procedure in [1, 2, 4, 8, 9]:
-        data = parse_washing_machine(wash_machine, order_id)    #正在洗车数据
+    if start_flag == 1 and procedure in washing_procedure_list[1:]:
+        data = bulid_washing_state(wash_system)
         return data
     else:
-        data = parse_standby_machine(wash_machine, order_id)    #洗车机空闲数据
+        data = bulid_standby_state(wash_system)
         return data
 
 
-#构建洗车机空闲时刻数据
-def parse_standby_machine(wash_machine, order_id):
-    output = wash_machine.output
+def parse_standby_machine(wash_system):
+    """
+    构建洗车机空闲时刻数据
+    """
+    wash_machine = wash_system.wash_machine
+    modbus_module = wash_system.modbus_module
+    output = wash_system.output
 
     device_bin = [0, 0, 0, 0, 0, 0, 0, 0]
-                           # [5]:PLC通信失败  [6]: Modbus通信失败   [7]: 洗车机故障
-    done_type = 0                                    # 未开始洗车，写死
-    need_wait = 0
-    err_code = 0                                     # 未开始洗车， 写死
 
-    car_state = 0                                    # 0：初始值  1：汽车太长  2：汽车位置不对  3：洗车房没有车
-    valid = 0                                        # 0：初始值  1：可以启动
+    done_type = DONE_TYPE_NORMAL             # 未开始洗车，写死
+    need_wait = 0
+    err_code = 0                             # 未开始洗车，写死
+
+    car_state =0
+    valid = 0                                # 这两位给初始值，下文会更改
     err_state = []
-    if not wash_machine.is_plc_connection_success(): # plc 通信失败
+    if not wash_machine.is_plc_connection_success():            # PLC 通信失败
         err_state.append(WASH_MACHINE_FAULT)
         device_bin[5] = 1
-    if not wash_machine.is_modbus_connection_success():  # modbus 通信失败
+    if not modbus_module.is_modbus_connection_success():        # Modbus 通信失败
         err_state.append(WASH_MACHINE_FAULT)
         device_bin[6] = 1
-    if wash_machine.is_plc_connection_success():
-        if wash_machine.wash_malfunction():              # 洗车机故障
-            err_state.append(WASH_MACHINE_FAULT)
-            device_bin[7] = 1
-    if wash_machine.is_modbus_connection_success() and wash_machine.is_plc_connection_success():
-        if not wash_machine.have_car_in():               # 洗车房没有车
-            car_state = 3
-        elif wash_machine.is_car_too_long():
-            err_state.append(CAR_FAULT)                  # 汽车太长
-            car_state = 1
-        elif not wash_machine.carposition() and wash_machine.have_car_in():
-            err_state.append(CAR_FAULT)                  # 汽车位置不对
-            car_state = 2
-    if err_state == []:
-        if not wash_machine.have_car_in():
-            state = NO_CAR_NO_FAULT                      # 空闲待机
-        else:
-            state = MACHINE_CAN_START                    # 可以启动
-            valid = 1
-    else:
-        state = err_state[0]
-    device_bin_str = '0b' + ''.join([str(i) for i in device_bin]) #将列表device_bin返回一个字符串表示各项状态，以 0b 开头，以 ''分隔各个元素
-    device = eval(str(device_bin_str))                            #eval()函数用来执行一个字符串表达式，并返回表达式的值
-    detail = dict(doneType=done_type, errCode=err_code, device=device, carState=car_state)  #定义detail字典，包含具体洗车故障等
-    data = dict(state=state, valid=valid, needWait=need_wait, orderId='', info=str(output), detail=detail)
-    data['code'] = MACHINE_CODE
-    return data
+
+
+
 
 
 #构建正在洗车数据
