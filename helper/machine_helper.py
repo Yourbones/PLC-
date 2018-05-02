@@ -188,6 +188,191 @@ class DeltaWashMachine(DeltaWashMachineBase):
                 copy_malfunction_state[3] = copy_malfunction_state[3] >> 1
             logger.info(machine_malfunction_str)
 
+    def parse_machine_action(self):
+        """
+        解析洗车机当前动作
+        """
+        self.action_state = self.machine_action_info(self.ser)
+        if self.action_state != [0]:
+            copy_action_state = self.action_state[:]
+            now_action_str = '洗车机正在运行，当前动作：'
+            for i in range(8):
+                if copy_action_state[5] & 1 == 1:
+                    now_action_str += str(delta_washing_action_flag_dict[i])
+                copy_action_state[5] = copy_action_state[5] >> 1
+            for i in range(8):
+                if copy_action_state[4] & 1 == 1:
+                    now_action_str += str(delta_washing_action_flag_dict[i + 8])
+                copy_action_state[4] = copy_action_state[4] >> 1
+            for i in range(8):
+                if copy_action_state[3] & 1 == 1:
+                    now_action_str += str(delta_washing_action_flag_dict[i + 16])
+                copy_action_state[3] = copy_action_state[3] >> 1
+            logger.info(now_action_str)
+
+    def start_machine(self):
+        """
+        开始洗车(动作)
+        """
+        output = self.control_machine(START, self.ser)
+
+    def machine_running(self):
+        """
+        是否洗车完成
+        """
+        # machine_state[3]初始为0，运行为1，故障为2
+        if self.machine_state[3] & 1 == 1:     # 洗车机正在运行。
+            return True
+        else:
+            time.sleep(2)                      # 等待其他线程刷新参数
+            if self.machine_state[3] &1 == 1:
+                return True                    # 洗车机正在运行
+            else:
+                return False                   # 洗车机不运行
+
+    def machine_malfunction(self):
+        """
+        判断洗车机故障
+        """
+        if self.machine_state[3] & 2 == 2:
+            return True
+        else:
+            return False
+
+    def is_plc_connection_success(self):
+        """
+        PLC 通信判断
+        """
+        if self.machine_connection_status == True:
+            return True
+        else:
+            return False
+
+    def machine_running_short(self):
+        """
+        判断洗车机瞬时时刻是否运行
+        """
+        if self.machine_state[3] & 1 == 1:
+            return True                 # 正在运行
+        else:
+            return False                # 不运行
+
+
+class SiemensWashMachine(SiemensWashMachineBase, DeltaWashMachine):
+    """
+    西门子PLC相关
+    """
+    def __init__(self, ser):
+        """
+        初始化参数
+        """
+        super(self.__class__, self).__init__(ser)  #? 不明白
+        self.machine_state = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 93]   # 洗车机状态
+        self.wash_action = 0                       # 运行当前步
+        self.wash_running_flag = 0                 # 洗车机运行状态
+        self.is_wash_completed = False             # 洗车已完成状态
+
+    def read_machine_state(self):
+        """
+        读洗车机状态
+        """
+        machine_state = self.machine_state_info(self.ser)
+        if machine_state != [0]:
+            self.machine_state = machine_state[3:]
+            self.machine_connection_status = True
+            self.front_limit_inductor_tag = self.machine_state[2]
+            self.parse_machine_state()
+        else:
+            self.machine_state = machine_state
+
+    def parse_machine_state(self):
+        """
+        初步解析洗车机状态
+        """
+        self.wash_action = self.machine_state[15]          # 洗车机当前步
+        self.wash_running_flag = self.machine_state[14]    # 洗车机运行状态
+
+        if self.machine_state[16] == 0xAA:
+            self.is_wash_completed = True
+        if self.machine_state[16] == 0x80:
+            self.is_wash_completed = False                 # 洗车已完成状态
+
+    def parse_machine_malfunction_state(self):
+        """
+        解析洗车机故障状态
+        """
+        if self.machine_state != [0]:
+            machine_state = self.machine_state[:]
+            machine_malfunction_str = '洗车机出现热保护'
+            machine_abnormal_str = '洗车机出现异常：'
+            for i in range(5):
+                if machine_state[19] & 0x01 == 0x01:
+                    machine_malfunction_str += str(siemens_machine_malfunction_flag_dict[i + 9])
+                machine_state[19] = machine_state[19] >> 1
+            for i in range(8):
+                if machine_state[18] & 0x01 == 0x01:
+                    machine_malfunction_str += str(siemens_machine_malfunction_flag_dict[i + 9])
+                self.machine_state[18] = self.machine_state[18] >> 1
+            logger.info(machine_malfunction_str)
+
+            if self.wash_action != 0xAA:
+                machine_abnormal_str += delta_siemens_wash_running_flag[self.wash_action]
+            logger.info(machine_abnormal_str)
+
+    def parse_machine_action(self):
+        """
+        解析洗车机当前动作
+        """
+        if self.machine_state != [0]:
+            now_action_str = '洗车机正在运行，当前动作：'
+            now_action_str += siemens_washing_action_flag_dict.get(self.wash_action)
+            logger.info(now_action_str)
+
+    def start_machine(self):
+        """
+        开始洗车(动作)
+        """
+        output = self.control_machine(START, self.ser)
+
+    def machine_running(self):
+        """
+        是否洗车完成
+        """
+        if self.machine_state[16] == 0xAA:            # 正在运行
+            return True
+        else:
+            time.sleep(2)                             # 等待其他线程刷新参数
+            if self.machine_state[16] == 0xAA:
+                return True                           # 正在运行
+            else:
+                return False                          # 不运行
+
+    def machine_malfunction(self):
+        """
+        判断洗车机故障
+        """
+        if self.wash_running_flag != 0xAA and self.wash_running_flag != 0:
+            return True
+        else:
+            return False
+
+    def machine_running_short(self):
+        if self.machine_state[16] == 0xAA:      # 正在运行
+            return True
+        else:
+            return False                        # 不运行
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -14,7 +14,7 @@ class mp3control(object):
 
     def __init__(self, *args, **kwargs):
         self.voice_dict = {
-           'welcome': BASE_DIR + '/media/welcome.wav',                       # 欢迎语
+            'welcome': BASE_DIR + '/media/welcome.wav',                       # 欢迎语
             'parked_right_A': BASE_DIR + '/media/parked_right_A.wav',        # 汽车位置正确语音A
             'parked_right_B': BASE_DIR + '/media/parked_right_B.wav',        # 汽车位置正确语音
             'wash_end': BASE_DIR + '/media/wash_end.wav',                    # 洗车完成
@@ -29,23 +29,23 @@ class mp3control(object):
         self.play_count = 2 # 播放按钮次数
         self.keep_play = False # 是否保持播放
 
-def play_action(self, voice_key):
-    if self.keep_play == False:
-        voice = self.voice_dict.get(voice_key, None)
-        if voice is not None:
-            PlaySound(voice, SND_ASYNC)
+    def play_action(self, voice_key):
+        if self.keep_play == False:
+            voice = self.voice_dict.get(voice_key, None)
+            if voice is not None:
+                PlaySound(voice, SND_ASYNC)
 
-def play_voice(self, voice_key):
-    #audio_clip = None
-    if voice_key == 'parked_right_A':
-        self.play_action(voice_key)
-        self.play_count = 2                        # 位置正确时把play_count设为播放两次
-        self.keep_play = True
-    elif voice_key == 'parked_right_B':
-        if self.play_count != 0:
+    def play_voice(self, voice_key):
+        # audio_clip = None
+        if voice_key == 'parked_right_A':
             self.play_action(voice_key)
-            self.play_count -= 1
+            self.play_count = 2  # 位置正确时把play_count设为播放两次
             self.keep_play = True
-    else:
-        self.keep_play = False                      # 非parked_right_A, parked_right_B 则首先把keep置为False
-        self.play_action(voice_key)
+        elif voice_key == 'parked_right_B':
+            if self.play_count != 0:
+                self.play_action(voice_key)
+                self.play_count -= 1
+                self.keep_play = True
+        else:
+            self.keep_play = False  # 非parked_right_A, parked_right_B 则首先把keep置为False
+            self.play_action(voice_key)

@@ -93,7 +93,7 @@ class ModbusModule(object):
         # 此处为 ModbusBase 类绑定的model,address,ser 属性
         self.target = [ModbusBase(0x1b, 3, ser), ModbusBase(0x02, 2, ser), ModbusBase(0x02, 6, ser)]
         self.ser = ser
-        self.modbus_state = [3, 2, 2, 0, 0, 192, 120]       # Modbus状态
+        self.modbus_state = [3, 2, 2, 0, 0, 192, 120]       # Modbus状态   ?各个位置代表什么含义
         self.start_button = 0x01                            # 物理开始键
         self.stop_button = 0x02                             # 物理急停键
         self.reset_button = 0x04                            # 物理复位键
