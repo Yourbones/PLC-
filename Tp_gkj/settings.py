@@ -36,7 +36,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-MACHINE_CODE = 'HZA3'  #每台工控机的唯一设备号   PS：#TODO: 设备号要更改
+MACHINE_CODE = 'HZA3'  # 每台工控机的唯一设备号   PS：#TODO: 设备号要更改
 
 SEND_STATE_URL = 'http://192.168.8.102:12345/notify/ter/state' #TODO:URL为测试服地址
 
