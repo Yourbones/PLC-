@@ -2,9 +2,9 @@
 from __future__ import absolute_import
 from __future__ import unicode_literals
 from multiprocessing import Process, Queue
-#multiprocessing是Python的标准模块
-#Process模块用来创建子进程，是核心模块
-#Queue模块用来控制进程安全
+# multiprocessing是Python的标准模块
+# Process模块用来创建子进程，是核心模块
+# Queue模块用来控制进程安全
 
 
 """
