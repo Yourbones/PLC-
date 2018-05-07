@@ -51,6 +51,8 @@ INIT_PROCEDURE = 0                # 初始进度
 DOOR_FALLING_PROCEDURE = 1        # 卷闸门落下
 MACHINE_WASHING_PROCEDURE = 2     # 洗车进行中
 NORMAL_WASH_END_PROCEDURE = 3     # 正常洗车结束
+
+# 暂停进度
 STOP_PROCEDURE = 4                # 暂停中
 RESETING_PROCEDURE = 8            # 暂停后复位中
 RESET_END_PROCEDURE = 9           # 暂停后复位结束
