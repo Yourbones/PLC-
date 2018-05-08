@@ -318,7 +318,22 @@ def main_loop_for_washing(wash_system):
                     logger.info("洗车订单结束，订单号：{}".format(str(order_id)))
                 else:
                     if order_id:
-                        pass
+                        machine_state = build_wash_end(wash_system, wash_system.procedure)
+                        send_state_data(machine_state)
+                    # 结束流程，可以开始下次洗车
+                    cond2.acquire()
+                    wash_system.order_id = ''            # 订单置空
+                    cond2.release()
+                    wash_system.init_params()            # 初始化wash_system的参数
+                    logger.info("洗车订单结束，订单号：{}".format(str(order_id)))
+
+        t = threading.Timer(2, main_loop_for_washing, args=[wash_system, ])         # 定时间隔
+        t.setDaemon(True)
+        t.start()
+        
+
+
+
 
 
 
